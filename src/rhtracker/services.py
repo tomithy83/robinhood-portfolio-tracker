@@ -22,19 +22,24 @@ from rhtracker import reconstruct as reconstruct_module
 from rhtracker import categories
 from rhtracker import export as export_mod
 from rhtracker import reporting
+from rhtracker import settings
 from rhtracker.model import MonthlySnapshot
-from rhtracker.reconstruct import BACKFILL_START
 from rhtracker.sources.base import Source
 from rhtracker.sources.robinhood import RobinhoodSource
 from rhtracker.storage import SqliteStore
 
 
 def pull(
-    since: date = BACKFILL_START,
+    since: date,
     source: Source | None = None,
     store: SqliteStore | None = None,
 ) -> list[MonthlySnapshot]:
     """Run the full pull chain and return the reconstructed month-end snapshots.
+
+    ``since`` is the backfill start date and is required — it sets both the
+    lower bound of the transaction harvest and the first month-end that gets
+    reconstructed. It is persisted to the store's sync state so a later
+    ``reconstruct`` (no network) can rebuild from the same starting point.
 
     Steps: authenticate, fetch + store transactions, derive the month-end
     dates, fetch + store the closing prices for held tickers, build and persist
@@ -52,11 +57,11 @@ def pull(
     transactions = source.fetch_transactions(since)
     store.save_transactions(transactions)
 
-    months = reconstruct_module.month_ends()
+    months = reconstruct_module.month_ends(start=since)
     prices = source.fetch_prices(store.held_tickers(), months)
     store.save_prices(prices)
 
-    snapshots = reconstruct_module.build_snapshots(store)
+    snapshots = reconstruct_module.build_snapshots(store, start=since)
     # Capture the broker's REAL point-in-time account state (optional).
     snap_fn = getattr(source, 'fetch_portfolio_snapshot', None)
     if callable(snap_fn):
@@ -72,6 +77,7 @@ def pull(
         "complete",
         last_transaction_date=last_txn_date,
         details={
+            "backfill_start": since.isoformat(),
             "transactions": len(transactions),
             "prices": len(prices),
             "snapshots": len(snapshots),
@@ -80,15 +86,37 @@ def pull(
     return snapshots
 
 
-def reconstruct(store: SqliteStore | None = None) -> list[MonthlySnapshot]:
+def reconstruct(
+    since: date | None = None,
+    store: SqliteStore | None = None,
+) -> list[MonthlySnapshot]:
     """Rebuild snapshots from already-stored transactions and prices.
 
     No network: runs only the deterministic tail of the pipeline against the
-    data already in the store.
+    data already in the store. The backfill start date is taken from ``since``
+    when provided, otherwise recovered from the sync state recorded by the last
+    ``pull``. Raises :class:`ValueError` if neither is available (there is no
+    hardcoded default).
     """
     store = store or SqliteStore()
     store.init_schema()
-    return reconstruct_module.build_snapshots(store)
+
+    start = since
+    if start is None:
+        state = store.get_sync_state() or {}
+        recorded = (state.get("details") or {}).get("backfill_start")
+        if recorded:
+            start = date.fromisoformat(recorded)
+    if start is None:
+        start = settings.default_since()
+    if start is None:
+        raise ValueError(
+            "No backfill start date: pass since=YYYY-MM-DD, set default_since in "
+            "settings.json, or run `pull --since DATE` first so it can be "
+            "recovered from the sync state."
+        )
+
+    return reconstruct_module.build_snapshots(store, start=start)
 
 
 def report(store: SqliteStore | None = None) -> str:

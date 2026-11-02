@@ -304,6 +304,22 @@ class SqliteStore:
         )
         self._conn.commit()
 
+    def get_sync_state(self) -> dict | None:
+        """Return the single sync_state row as a dict (with ``details`` parsed
+        from JSON), or ``None`` if no sync has run yet."""
+        row = self._conn.execute(
+            "SELECT last_sync_at, last_transaction_date, status, details "
+            "FROM sync_state WHERE id = 1"
+        ).fetchone()
+        if not row:
+            return None
+        out = {k: row[k] for k in row.keys()}
+        try:
+            out["details"] = json.loads(out["details"]) if out["details"] else {}
+        except (TypeError, ValueError):
+            out["details"] = {}
+        return out
+
     # -- reads -------------------------------------------------------------
 
     def all_transactions(self) -> list[Transaction]:

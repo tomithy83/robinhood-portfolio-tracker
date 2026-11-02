@@ -65,7 +65,7 @@ _DEFINITIONS = [
     ["Total Interest Paid", "Running cumulative of Interest Paid."],
     ["Flags", "Notes, e.g. a held ticker with no cached historical price (excluded from Gross Value, not zeroed)."],
     ["", ""],
-    ["NOTE: Splits", "Reverse splits are applied from a manual table (src/rhtracker/splits.py); the API does not expose them reliably. Validated against real current share counts."],
+    ["NOTE: Splits", "Reverse splits are applied from a manual table in settings.json; the API does not expose them reliably. Validated against real current share counts."],
     ["NOTE: Options", "Options are summarized on the Options sheet by premium; they do NOT contribute to Gross Value."],
     ["NOTE: Values", "All cells are computed values (no formulas), so this workbook is identical whether exported to Excel or Google Sheets."],
 ]

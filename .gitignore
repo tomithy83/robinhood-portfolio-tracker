@@ -67,3 +67,9 @@ desktop.ini
 # ── Logs ──────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Local docs (contain captured real account data) ───────────────────
+docs/
+
+# ── Local settings (payee classifiers, splits, default start date) ────
+settings.json

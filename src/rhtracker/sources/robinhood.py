@@ -36,14 +36,12 @@ import logging
 import os
 from datetime import date
 
+from rhtracker import settings
 from rhtracker.model import PortfolioSnapshot, Price, Transaction
 
 log = logging.getLogger("rhtracker.sources.robinhood")
 
 PICKLE_DIR = os.path.expanduser("~/.tokens")
-
-# Reconstruction's fixed backfill start; the default lower bound for a harvest.
-BACKFILL_START = date(2025, 10, 1)
 
 
 # --------------------------------------------------------------------------
@@ -207,14 +205,13 @@ def _normalize_received_transfer(transfer):
                 txn_type = "payroll_deposit"
             elif "refund" in o:
                 txn_type = "refund"
+            # User-configured payee rules may override the generic label.
+            txn_type = settings.classify("received", "credit", originator) or txn_type
         elif direction == "debit":
             txn_type, signed = "bill_payment", -abs(amount)
-            if "honda" in o:
-                txn_type = "auto_loan_payment"
-            elif any(k in o for k in ("student", "mohela", "aidvantage")):
-                txn_type = "student_loan_payment"
-            elif "mobile" in o:
-                txn_type = "mobile_transfer"
+            # Payee-specific labels (auto loan, student loan, ...) come from
+            # settings.json so no personal payee names live in the source.
+            txn_type = settings.classify("received", "debit", originator) or txn_type
         else:
             log.warning(f"unknown received direction '{direction}' ({originator}) — skipping")
             return None
@@ -258,14 +255,17 @@ def _normalize_card_transaction(ct):
                 txn_type = "refund"
             elif "interest" in d:
                 txn_type = "interest_payment"
+            txn_type = settings.classify("card", "credit", description) or txn_type
         elif direction == "debit":
             signed = -abs(amount)
             if "atm" in d:
                 txn_type = "atm_withdrawal"
-            elif "honda" in d or "payment" in d:
+            elif "payment" in d:
                 txn_type = "bill_payment"
             else:
                 txn_type = "card_purchase"
+            # User rules can refine a debit into a more specific payee label.
+            txn_type = settings.classify("card", "debit", description) or txn_type
         else:
             log.warning(f"unknown card direction '{direction}' ({description}) — default card_purchase")
             txn_type, signed = "card_purchase", -abs(amount)
@@ -440,8 +440,8 @@ def _normalize_internal_transfer(t):
 def _normalize_option_order(order):
     """Normalize a filled option order into a Transaction.
 
-    Shape (see docs/robinhood-api.md section 5): multi-leg, but the realized
-    cash figure is ``net_amount`` with ``net_amount_direction`` giving sign.
+    Shape: multi-leg, but the realized cash figure is ``net_amount`` with
+    ``net_amount_direction`` giving the sign.
     direction/net_amount_direction: ``debit`` = premium paid (cash out),
     ``credit`` = premium received (cash in). ``chain_symbol`` is the clean
     underlying ticker (no instrument-URL resolution needed). Only filled

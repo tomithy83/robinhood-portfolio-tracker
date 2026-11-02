@@ -1,0 +1,44 @@
+{
+  "default_since": "2024-01-01",
+
+  "classifiers": [
+    {
+      "feed": "received",
+      "direction": "credit",
+      "keywords": ["payroll", "my employer inc"],
+      "type": "payroll_deposit"
+    },
+    {
+      "feed": "received",
+      "direction": "debit",
+      "keywords": ["honda", "toyota financial"],
+      "type": "auto_loan_payment"
+    },
+    {
+      "feed": "received",
+      "direction": "debit",
+      "keywords": ["mohela", "aidvantage", "student loan"],
+      "type": "student_loan_payment"
+    },
+    {
+      "feed": "received",
+      "direction": "debit",
+      "keywords": ["mobile transfer"],
+      "type": "mobile_transfer"
+    },
+    {
+      "feed": "card",
+      "direction": "debit",
+      "keywords": ["honda"],
+      "type": "bill_payment"
+    }
+  ],
+
+  "splits": [
+    {
+      "ticker": "EXMPL",
+      "date": "2025-12-08",
+      "factor": 0.2
+    }
+  ]
+}

@@ -6,6 +6,8 @@ result. No business logic lives here — the CLI is only allowed to print.
 
 from __future__ import annotations
 
+from datetime import date
+
 from rhtracker import services
 
 
@@ -16,12 +18,22 @@ def add_parser(subparsers):
         help="rebuild month-end snapshots from already-stored transactions and "
         "prices (no network)",
     )
+    parser.add_argument(
+        "--since",
+        type=date.fromisoformat,
+        default=None,
+        help="first month-end to reconstruct (YYYY-MM-DD). Defaults to the "
+        "backfill start recorded by the last `pull`.",
+    )
     parser.set_defaults(func=run)
     return parser
 
 
 def run(args):
     """Rebuild snapshots and print how many month-end rows were produced."""
-    snapshots = services.reconstruct(store=getattr(args, "store", None))
+    snapshots = services.reconstruct(
+        since=getattr(args, "since", None),
+        store=getattr(args, "store", None),
+    )
     print(f"Reconstructed {len(snapshots)} month-end rows.")
     return 0

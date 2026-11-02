@@ -1,10 +1,10 @@
 # Robinhood Portfolio Tracker
 
 A self-contained tool that pulls your Robinhood history, stores it in SQLite,
-reconstructs a **month-end tracking ledger** back to **Oct 2025**, and exports a
-multi-sheet workbook (Excel now, Google Sheets later). Built around a clean
-three-layer package so adding data sources, output formats, or report tabs is
-low-friction.
+reconstructs a **month-end tracking ledger** back to a start date you choose,
+and exports a multi-sheet workbook (Excel now, Google Sheets later). Built
+around a clean three-layer package so adding data sources, output formats, or
+report tabs is low-friction.
 
 Everything is **computed values, not formulas**, so an exported Excel file and a
 future Google Sheet are byte-for-byte identical in content.
@@ -27,12 +27,26 @@ Run from source with `src/` on the path:
 
 ```
 cd src
-python -m rhtracker pull --since 2025-10-01   # log in (interactive MFA), pull, reconstruct
+python -m rhtracker pull --since 2024-01-01   # log in (interactive MFA), pull, reconstruct
 python -m rhtracker export                    # write a timestamped .xlsx under output/
 python -m rhtracker report                    # print the month-end grid + summaries
 python -m rhtracker reconstruct               # rebuild rows from stored data (no network)
 python -m rhtracker categories                # print category tables
 ```
+
+`--since` sets how far back to pull and reconstruct. Pick the earliest date you
+want tracked (constrained by how far back Robinhood's API actually returns data
+— older months may come back sparse or with missing-price flags). The start date
+is resolved in this order:
+
+1. the `--since` flag, if given;
+2. otherwise `default_since` from your `settings.json` (see below);
+3. otherwise `pull` prompts for the date interactively.
+
+So the usual setup is to put `default_since` in `settings.json` once and then
+just run `pull` with no flag. `reconstruct` resolves the same way but also falls
+back to the start date recorded by the last `pull` before prompting; pass its
+own `--since` to rebuild from a different date.
 
 First `pull` prompts for an MFA code and caches a session under `~/.tokens`, so
 later runs are non-interactive until the token expires.
@@ -43,7 +57,7 @@ The backfill is a full rebuild. To refresh, delete the DB and re-pull:
 
 ```
 rm robinhood.db           # (Windows: Remove-Item robinhood.db)
-cd src && python -m rhtracker pull --since 2025-10-01 && python -m rhtracker export
+cd src && python -m rhtracker pull --since 2024-01-01 && python -m rhtracker export
 ```
 
 A fresh rebuild is required because dedup would otherwise keep stale rows (e.g.
@@ -54,8 +68,8 @@ is a few hundred transactions.
 
 | Command | What it does | Network? |
 |---------|--------------|----------|
-| `pull [--since DATE]` | authenticate, harvest all transactions, fetch historical prices, capture a real account snapshot, reconstruct, store | yes |
-| `reconstruct` | rebuild the month-end rows from already-stored data | no |
+| `pull --since DATE` | authenticate, harvest all transactions, fetch historical prices, capture a real account snapshot, reconstruct, store (prompts for the date if `--since` is omitted) | yes |
+| `reconstruct [--since DATE]` | rebuild the month-end rows from already-stored data (reuses the last pull's start date unless overridden) | no |
 | `report` | print the overall summary, month-end grid, and transaction summary | no |
 | `categories` | print dividend / expense / fee / stock / option tables | no |
 | `export [--format xlsx|gsheets] [--out PATH]` | build the workbook and write it (default: timestamped `.xlsx` in `output/`) | no |
@@ -73,14 +87,14 @@ services.py     pull() / reconstruct() / report() / category_report() / export_w
   |  imports                                        (orchestration; no argparse, no print)
   v
 library         model · sources · storage · reconstruct · reporting
-                categories · export · writers · splits
+                categories · export · writers · splits · settings
 ```
 
 - **CLI layer** (`cli/`, one file per command) only parses arguments and prints.
 - **Services layer** wires the library together; returns values, never prints.
   Both the data `source` and the `store` are injectable (tests pass fakes).
-- **Library layer** does the work and never imports upward. `model` and
-  `splits` are the foundational data modules.
+- **Library layer** does the work and never imports upward. `model` is the
+  foundational data module; `settings` loads per-user config (`settings.json`).
 
 The downward-only rule is enforced by `tests/test_layers.py`, which statically
 parses every module's imports.
@@ -93,7 +107,8 @@ src/rhtracker/
   reconstruct.py         # flows -> positions -> month-end MonthlySnapshot rows
   reporting.py           # snapshots/categories -> formatted strings
   categories.py          # dividend / expense / fee / stock / option groupings
-  splits.py              # manual stock-split table (see below)
+  splits.py              # split-adjustment math (reads the table from settings)
+  settings.py            # per-user config loader (settings.json)
   export.py              # writer-agnostic ExportWorkbook builder (the sheets)
   services.py            # orchestration recipes
   sources/
@@ -151,15 +166,15 @@ Robinhood splits money across the **brokerage** (`rhs_account`) and the
 **Robinhood banking/checking** (`rhy_banking_checking`) sides. Transfers between
 them — and credit-card cashback — appear in **no** standard feed; only in the
 undocumented `unified_transfers` endpoint. Missing these understated the ledger
-by ~$17k. They are now captured as `rhy_transfer` (withdrawal out) and
-`cashback` (income). See `docs/robinhood-api.md` section 7 for the full story.
+materially. They are now captured as `rhy_transfer` (withdrawal out) and
+`cashback` (income).
 
 ### Splits are manual
 Robinhood does not reliably expose stock splits via the API (`get_splits`, the
-instrument splits feed, and `get_events` all came back empty for a known MSTY
-1-for-5 reverse split). Splits live in a small hand-maintained table,
-`src/rhtracker/splits.py`, and are validated against real current share counts.
-If a holding splits, add one line there and re-pull.
+instrument splits feed, and `get_events` all came back empty for a known 1-for-5
+reverse split). Splits live in a hand-maintained `splits` list in your
+`settings.json` (see `settings.example.json`), validated against real current
+share counts. If a holding splits, add one entry there and re-pull.
 
 ### Historical prices are back-adjusted
 `get_stock_historicals` reports pre-split dates on the current post-split price
@@ -195,13 +210,26 @@ Runs offline against a `FakeSource` (no live Robinhood needed). Includes the
 36-assertion reconstruction oracle, split handling, category/export logic, the
 services cohesion test, and the layer-dependency property tests.
 
-## API reference
+## Configuration (`settings.json`)
 
-`docs/robinhood-api.md` documents the (unofficial) Robinhood API: how to
-discover endpoints, the full URL map, real captured response shapes, the options
-schema, and the unified_transfers / two-ledger findings.
+Per-user configuration lives in a gitignored `settings.json` at the repo root.
+Copy the committed template and edit it:
+
+```
+cp settings.example.json settings.json     # (Windows: Copy-Item settings.example.json settings.json)
+```
+
+| Key | What it does |
+|-----|--------------|
+| `default_since` | default backfill start date (YYYY-MM-DD) used when `pull`/`reconstruct` get no `--since`; set to `null` to always be prompted |
+| `classifiers` | keyword → transaction-type rules that label transfers and card transactions by payee (e.g. an auto-loan servicer) |
+| `splits` | manual stock-split table: `{ "ticker", "date", "factor" }` entries (a 1-for-5 reverse split is `0.2`, a 2-for-1 forward split is `2.0`) |
+
+Settings are optional — with no `settings.json`, classifiers and splits are
+empty and `--since` is always required (or prompted).
 
 ## Files not in git
 
-`.env` (credentials), `robinhood.db`, and `output/` (exported workbooks) are
-gitignored. `.env.example` is the committed template.
+`.env` (credentials), `settings.json` (per-user config), `robinhood.db`,
+`output/` (exported workbooks), and `docs/` are gitignored. `.env.example` and
+`settings.example.json` are the committed templates.

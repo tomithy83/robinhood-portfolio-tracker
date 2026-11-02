@@ -175,3 +175,59 @@ def test_property_9_fake_source_is_deterministic():
     for _ in range(100):
         assert src.fetch_transactions(since) == first_txns
         assert src.fetch_prices(tickers, dates) == first_prices
+
+
+# --------------------------------------------------------------------------
+# Settings-driven payee classification (de-personalized from hardcoded rules)
+# --------------------------------------------------------------------------
+from rhtracker import settings  # noqa: E402
+
+
+def _rule(feed, direction, keywords, type):
+    return settings.ClassifierRule(feed, direction, tuple(keywords), type)
+
+
+def test_received_debit_uses_settings_classifier(monkeypatch):
+    """A configured 'received/debit' keyword rule overrides the generic
+    bill_payment label; with no rule the generic label stands."""
+    monkeypatch.setattr(
+        settings, "classifier_rules",
+        lambda: [_rule("received", "debit", ["honda"], "auto_loan_payment")],
+    )
+    txn = robinhood._normalize_received_transfer(
+        {"amount": {"amount": "546.42"}, "direction": "debit",
+         "originator_name": "HONDA PMT", "created_at": "2025-10-05T00:00:00Z",
+         "id": "rt-1"}
+    )
+    assert txn.transaction_type == "auto_loan_payment"
+    assert txn.amount == -546.42
+
+    # A payee with no matching rule falls back to the generic debit label.
+    other = robinhood._normalize_received_transfer(
+        {"amount": "20.00", "direction": "debit", "originator_name": "SOME LLC",
+         "created_at": "2025-10-06T00:00:00Z", "id": "rt-2"}
+    )
+    assert other.transaction_type == "bill_payment"
+
+
+def test_card_debit_uses_settings_classifier(monkeypatch):
+    monkeypatch.setattr(
+        settings, "classifier_rules",
+        lambda: [_rule("card", "debit", ["honda"], "bill_payment")],
+    )
+    txn = robinhood._normalize_card_transaction(
+        {"amount": "546.42", "direction": "debit", "description": "HONDA FIN",
+         "created_at": "2025-10-05T00:00:00Z", "id": "ct-1"}
+    )
+    assert txn.transaction_type == "bill_payment"
+    assert txn.amount == -546.42
+
+
+def test_no_classifier_rules_leaves_generic_labels(monkeypatch):
+    """With an empty rule set, the universal keyword labels still apply."""
+    monkeypatch.setattr(settings, "classifier_rules", lambda: [])
+    atm = robinhood._normalize_card_transaction(
+        {"amount": "40.00", "direction": "debit", "description": "ATM CASH",
+         "created_at": "2025-10-05T00:00:00Z", "id": "ct-2"}
+    )
+    assert atm.transaction_type == "atm_withdrawal"

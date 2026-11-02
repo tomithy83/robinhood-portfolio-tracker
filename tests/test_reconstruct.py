@@ -84,7 +84,9 @@ def test_oracle_36_hand_computed_values():
         Price("AAA", date(2025, 12, 31), 70.0),
     ])
 
-    snapshots = reconstruct.build_snapshots(store, end=date(2025, 12, 31))
+    snapshots = reconstruct.build_snapshots(
+        store, start=date(2025, 10, 1), end=date(2025, 12, 31)
+    )
     by_month = {s.month_end: s for s in snapshots}
 
     # --- expected values, computed by hand ---
@@ -154,7 +156,7 @@ def test_month_ends_bounded_and_ordered(end):
 
     Validates: Requirements 2.2
     """
-    months = reconstruct.month_ends(end=end)
+    months = reconstruct.month_ends(start=date(2025, 10, 1), end=end)
 
     first_me = date(2025, 10, 31)
     if end < first_me:
@@ -181,7 +183,7 @@ def _run_with(trades, prices, end):
         txns.append(_txn(d, typ, asset, amount, qty=qty, ref=f"t-{i}"))
     store.save_transactions(txns)
     store.save_prices(prices)
-    snapshots = reconstruct.build_snapshots(store, end=end)
+    snapshots = reconstruct.build_snapshots(store, start=date(2025, 10, 1), end=end)
     return {s.month_end: s for s in snapshots}
 
 

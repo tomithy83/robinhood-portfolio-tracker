@@ -6,8 +6,8 @@ the raw ``db`` connection to ``SqliteStore`` reads and returning
 
 Pipeline (preserved):
 
-  1. ``month_ends()``        -> month-end dates from BACKFILL_START to latest
-                               COMPLETED month.
+  1. ``month_ends()``        -> month-end dates from the caller-supplied start
+                               date to the latest COMPLETED month.
   2. ``reconstruct_positions`` -> shares held per ticker at each month-end
                                (cumulative signed share deltas from buy/sell).
   3. ``value_positions``     -> gross_value per month-end using the close on or
@@ -36,8 +36,6 @@ from rhtracker.splits import adjustment_factor
 
 log = logging.getLogger("rh_reconstruct")
 
-BACKFILL_START = date(2025, 10, 1)
-
 # --- transaction-type groupings (ported unchanged) ------------------------
 DEPOSIT_TYPES = {"deposit", "direct_deposit", "payroll_deposit", "wire_deposit"}
 WITHDRAWAL_TYPES = {"withdrawal", "wire_withdrawal"}
@@ -55,9 +53,12 @@ BUY_TYPES = {"buy"}
 SELL_TYPES = {"sell"}
 
 
-def month_ends(start=BACKFILL_START, end=None):
+def month_ends(start, end=None):
     """Return month-end dates from ``start``'s month through the latest
-    COMPLETED month before ``end`` (default today)."""
+    COMPLETED month before ``end`` (default today).
+
+    ``start`` is required — the caller must supply the backfill start date;
+    there is no built-in default."""
     if end is None:
         end = date.today()
     results = []
@@ -216,12 +217,13 @@ def reconstruct_margin(store, months, flows):
     return out
 
 
-def build_snapshots(store, end=None):
+def build_snapshots(store, start, end=None):
     """Assemble the 17-column ``MonthlySnapshot`` rows and persist them.
 
-    Returns a ``list[MonthlySnapshot]`` (empty if no completed month in range).
+    ``start`` is the backfill start date (required). Returns a
+    ``list[MonthlySnapshot]`` (empty if no completed month in range).
     """
-    months = month_ends(end=end)
+    months = month_ends(start=start, end=end)
     if not months:
         log.warning("No completed months in range.")
         return []

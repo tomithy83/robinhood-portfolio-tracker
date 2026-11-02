@@ -69,7 +69,7 @@ def test_reconstruct_rebuilds_snapshots_from_stored_data():
     store = _fresh_store()
     services.pull(since=date(2025, 1, 1), source=FakeSource(), store=store)
 
-    snapshots = services.reconstruct(store)
+    snapshots = services.reconstruct(store=store)
 
     assert isinstance(snapshots, list)
     assert snapshots, "expected reconstruct to return snapshots"

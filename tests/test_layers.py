@@ -45,7 +45,7 @@ SCRIPTS_CLI = "scripts/cli"
 
 # The library modules, by their dotted suffix under ``rhtracker`` (``sources`` is
 # a sub-package, so anything beneath it is library too).
-LIBRARY_MODULES = {"model", "storage", "reconstruct", "reporting", "sources", "splits", "categories", "export", "writers"}
+LIBRARY_MODULES = {"model", "storage", "reconstruct", "reporting", "sources", "splits", "categories", "export", "writers", "settings"}
 
 
 def _rhtracker_suffix(module_path: Path) -> str:

@@ -1,0 +1,69 @@
+﻿# ── Secrets / credentials — never commit ──────────────────────────────
+.env
+.env.*
+!.env.example
+*.pickle
+*.pem
+*.key
+*.p12
+*.pfx
+.tokens/
+.secrets/
+credentials.json
+secrets.json
+
+# ── Local data / databases ────────────────────────────────────────────
+robinhood.db
+*.db
+*.sqlite
+*.sqlite3
+*.parquet
+
+# ── Tabular data exports (may contain account data) ───────────────────
+*.csv
+*.tsv
+
+# ── Exported workbooks ────────────────────────────────────────────────
+output/
+*.xlsx
+*.xls
+
+# ── Python ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+.venv/
+venv/
+env/
+ENV/
+
+# ── Editor / IDE / tooling ────────────────────────────────────────────
+.kiro/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS cruft ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ──────────────────────────────────────────────────────────────
+*.log
+logs/
